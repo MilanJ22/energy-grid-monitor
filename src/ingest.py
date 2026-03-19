@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
@@ -44,8 +45,14 @@ def fetch_demand(region: str, days_back: int = 7) -> pd.DataFrame:
         "length": 500,
     }
 
-    response = requests.get(f"{BASE_URL}/electricity/rto/region-data/data", params=params)
-    response.raise_for_status()
+    for attempt in range(3):
+        response = requests.get(f"{BASE_URL}/electricity/rto/region-data/data", params=params)
+        if response.status_code == 502:
+            print(f"  EIA API returned 502, retrying in 5s (attempt {attempt + 1}/3)...")
+            time.sleep(5)
+            continue
+        response.raise_for_status()
+        break
 
     raw = response.json()
     records = raw.get("response", {}).get("data", [])
@@ -85,8 +92,14 @@ def fetch_generation(region: str, days_back: int = 7) -> pd.DataFrame:
         "length": 500,
     }
 
-    response = requests.get(f"{BASE_URL}/electricity/rto/region-data/data", params=params)
-    response.raise_for_status()
+    for attempt in range(3):
+        response = requests.get(f"{BASE_URL}/electricity/rto/region-data/data", params=params)
+        if response.status_code == 502:
+            print(f"  EIA API returned 502, retrying in 5s (attempt {attempt + 1}/3)...")
+            time.sleep(5)
+            continue
+        response.raise_for_status()
+        break
 
     raw = response.json()
     records = raw.get("response", {}).get("data", [])
