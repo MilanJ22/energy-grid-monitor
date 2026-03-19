@@ -1,0 +1,16 @@
+# Environment variables - never commit API keys
+.env
+
+# Python virtual environment
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Data files - too large for git
+data/
+
+# OS junk
+.DS_Store
+Thumbs.db
