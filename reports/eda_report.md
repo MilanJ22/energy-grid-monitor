@@ -1,4 +1,7 @@
 # EDA Report — U.S. Energy Grid Monitor
+
+> **Note:** This is a point-in-time snapshot. The live dashboard pulls fresh EIA data hourly — numbers there will differ from what's recorded here. This report documents the findings from the initial data pull used to calibrate the scoring thresholds.
+
 **Date:** 2026-03-19
 **Data Source:** U.S. Energy Information Administration (EIA) API v2
 **Time Range:** 2026-03-12 17:00 UTC → 2026-03-19 06:00 UTC (6 days, 13 hours)

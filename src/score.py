@@ -16,6 +16,18 @@ RISK_COLORS = {
     "CRITICAL": "#8e44ad",  # purple
 }
 
+TREND_ICONS = {
+    "DETERIORATING": "↓",
+    "STABLE": "→",
+    "RECOVERING": "↑",
+}
+
+TREND_COLORS = {
+    "DETERIORATING": "#e74c3c",
+    "STABLE": "#718096",
+    "RECOVERING": "#2ecc71",
+}
+
 
 def score_region(row: pd.Series) -> str:
     """
@@ -58,17 +70,72 @@ def score_region(row: pd.Series) -> str:
     return "LOW"
 
 
-def score(summary_df: pd.DataFrame) -> pd.DataFrame:
+def compute_trend(time_series_df: pd.DataFrame) -> pd.Series:
+    """
+    Computes a trend label per region by comparing the current balance_ratio
+    to the value 6 hours prior.
+
+    Classification (delta = ratio_now - ratio_6h_ago):
+      DETERIORATING — delta > +0.05  (demand rising relative to generation)
+      RECOVERING    — delta < -0.05  (supply improving relative to demand)
+      STABLE        — change within ±0.05
+
+    Returns a Series indexed by region with name "trend".
+    """
+    df = time_series_df[["region", "timestamp", "balance_ratio"]].copy()
+    df = df.sort_values(["region", "timestamp"])
+
+    # Latest balance_ratio per region
+    idx_latest = df.groupby("region")["timestamp"].idxmax()
+    latest = df.loc[idx_latest].set_index("region")[["balance_ratio"]].rename(
+        columns={"balance_ratio": "ratio_now"}
+    )
+
+    # Balance ratio closest to 6 hours before the latest timestamp per region
+    latest_ts = df.groupby("region")["timestamp"].max().rename("latest_ts").reset_index()
+    df = df.merge(latest_ts, on="region")
+    df["ts_dist"] = (df["timestamp"] - (df["latest_ts"] - pd.Timedelta(hours=6))).abs()
+    idx_6h = df.groupby("region")["ts_dist"].idxmin()
+    six_h = df.loc[idx_6h].set_index("region")[["balance_ratio"]].rename(
+        columns={"balance_ratio": "ratio_6h"}
+    )
+
+    combined = latest.join(six_h)
+    combined["delta"] = combined["ratio_now"] - combined["ratio_6h"]
+
+    def _classify(delta):
+        if pd.isna(delta):
+            return "STABLE"
+        if delta > 0.05:
+            return "DETERIORATING"
+        if delta < -0.05:
+            return "RECOVERING"
+        return "STABLE"
+
+    return combined["delta"].map(_classify).rename("trend")
+
+
+def score(summary_df: pd.DataFrame, time_series_df: pd.DataFrame = None) -> pd.DataFrame:
     """
     Takes the region summary from transform.summarize_by_region()
-    and appends risk_level, risk_rank, and risk_color columns.
+    and appends risk_level, risk_rank, risk_color, and trend columns.
     Returns the scored summary sorted by risk (most critical first).
+
+    If time_series_df is provided, trend is computed from the 6-hour
+    balance_ratio velocity. Otherwise all regions default to STABLE.
     """
     df = summary_df.copy()
 
     df["risk_level"] = df.apply(score_region, axis=1)
     df["risk_rank"] = df["risk_level"].map(RISK_LEVELS)
     df["risk_color"] = df["risk_level"].map(RISK_COLORS)
+
+    if time_series_df is not None:
+        trend = compute_trend(time_series_df)
+        df = df.merge(trend.reset_index(), on="region", how="left")
+        df["trend"] = df["trend"].fillna("STABLE")
+    else:
+        df["trend"] = "STABLE"
 
     df = df.sort_values("risk_rank", ascending=False).reset_index(drop=True)
 
@@ -87,6 +154,7 @@ def print_risk_report(scored_df: pd.DataFrame) -> None:
         print(f"  Stress hours      : {int(row['stress_hours'])}/{int(row['total_hours'])} ({row['stress_pct']}%)")
         print(f"  Current streak    : {int(row['stress_streak'])} consecutive stress hours")
         print(f"  Avg net balance   : {int(row['avg_net_balance_mw']):+,} MW")
+        print(f"  Trend (6h)        : {row['trend']}")
         print(f"  Last updated      : {row['last_updated']}")
 
     print("\n" + "=" * 65)
@@ -104,6 +172,6 @@ if __name__ == "__main__":
     raw = fetch_all_regions(days_back=7)
     transformed = transform(raw)
     summary = summarize_by_region(transformed)
-    scored = score(summary)
+    scored = score(summary, transformed)
 
     print_risk_report(scored)

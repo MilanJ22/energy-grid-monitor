@@ -26,26 +26,29 @@ This tool answers that question continuously, across all 9 major U.S. balancing 
 
 ## Architecture
 
-A five-layer pipeline, each stage independently testable:
+A six-layer pipeline, each stage independently testable:
 
 ```
-[Ingest]  →  [Transform]  →  [Score]  →  [Storage]  →  [Dashboard]
-EIA API       Clean + derive   Risk level   DuckDB        Streamlit
-              operational      assignment   persistence   + Folium
-              fields
+[Ingest]  →  [Transform]  →  [Score]  →  [Storage]  →  [Agent]  →  [Dashboard]
+EIA API       Clean + derive   Risk level   DuckDB        Claude        Streamlit
+              operational      + trend      persistence   tool use      + Folium
+              fields           velocity
 ```
 
 | Layer | File | Description |
 |---|---|---|
 | Ingestion | `src/ingest.py` | Pulls hourly demand & generation from EIA API v2 for 9 regions |
 | Transform | `src/transform.py` | Derives net balance, balance ratio, rolling averages, stress flags |
-| Scoring | `src/score.py` | Assigns CRITICAL / HIGH / MEDIUM / LOW risk per region |
+| Scoring | `src/score.py` | Assigns CRITICAL / HIGH / MEDIUM / LOW risk + 6-hour trend velocity |
 | Storage | `src/storage.py` | Persists time series and scores to DuckDB |
-| Dashboard | `app.py` | Interactive Streamlit app with geospatial map and time series |
+| Agent | `src/agent.py` | Claude-powered situation report and Q&A; all answers grounded in tool calls against DuckDB |
+| Dashboard | `app.py` | Interactive Streamlit app with geospatial map, time series, and AI analyst panel |
 
 ---
 
-## Key Findings (as of March 2026)
+## Key Findings
+
+> The table below reflects a historical data pull (2026-03-12 → 2026-03-19). Because this tool ingests live EIA data, scores change hourly — results when you run it today will differ. See [`reports/eda_report.md`](reports/eda_report.md) for the full snapshot with methodology notes.
 
 | Region | Risk | Avg Net Balance | Stress Hours |
 |---|---|---|---|
@@ -63,6 +66,17 @@ EIA API       Clean + derive   Risk level   DuckDB        Streamlit
 
 ---
 
+## AI Features
+
+The dashboard includes a Claude-powered analyst layer (`src/agent.py`) built on Anthropic's tool use API:
+
+- **Situation Report** — auto-generated on load; Claude calls `get_current_scores()` against DuckDB and produces a 3-5 sentence operational briefing covering risk distribution, deteriorating regions, and the grid's strongest buffer
+- **Ask the Grid Analyst** — free-text Q&A panel; Claude can call `get_current_scores`, `get_region_history`, and `compare_regions` to answer questions about current conditions
+
+**Anti-hallucination design:** Claude is prohibited from performing arithmetic on tool results, using prior knowledge about grid infrastructure, or inferring causes. Every number in its output comes directly from a tool call against DuckDB. This mirrors Palantir AIP's pattern of grounding LLM responses in ontology-backed tool calls rather than model inference.
+
+---
+
 ## Tech Stack
 
 | Tool | Purpose |
@@ -73,12 +87,13 @@ EIA API       Clean + derive   Risk level   DuckDB        Streamlit
 | Streamlit | Operational dashboard |
 | Folium | Geospatial risk map |
 | EIA API v2 | Live U.S. grid data source |
+| Claude (claude-sonnet-4-6) | AI situation report and Q&A analyst |
 
 ---
 
 ## Running Locally
 
-**Prerequisites:** Python 3.10+, an [EIA API key](https://www.eia.gov/opendata/) (free)
+**Prerequisites:** Python 3.10+, an [EIA API key](https://www.eia.gov/opendata/) (free), an [Anthropic API key](https://console.anthropic.com/) (for AI features)
 
 ```bash
 # Clone the repo
@@ -93,8 +108,9 @@ source venv/bin/activate     # Mac/Linux
 # Install dependencies
 pip install -r requirements.txt
 
-# Add your EIA API key
-echo EIA_API_KEY=your_key_here > .env
+# Add your API keys
+cp .env.example .env
+# Edit .env and set EIA_API_KEY and ANTHROPIC_API_KEY
 
 # Launch the dashboard
 streamlit run app.py
@@ -111,11 +127,12 @@ energy-grid-monitor/
 ├── src/
 │   ├── ingest.py       # EIA API data fetching
 │   ├── transform.py    # Pipeline transforms and derived metrics
-│   ├── score.py        # Risk scoring engine
-│   └── storage.py      # DuckDB read/write layer
+│   ├── score.py        # Risk scoring engine + 6-hour trend velocity
+│   ├── storage.py      # DuckDB read/write layer
+│   └── agent.py        # Claude AI agent — situation report and Q&A
 ├── app.py              # Streamlit dashboard
 ├── reports/
-│   └── eda_report.md   # Exploratory data analysis findings
+│   └── eda_report.md   # Exploratory data analysis findings (historical snapshot)
 ├── screenshots/        # Dashboard previews
 ├── .env.example        # API key template
 └── requirements.txt    # Dependencies

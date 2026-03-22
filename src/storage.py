@@ -36,7 +36,7 @@ def init_db() -> None:
     """)
 
     con.execute("""
-        CREATE TABLE IF NOT EXISTS region_scores (
+        CREATE OR REPLACE TABLE region_scores (
             region              VARCHAR PRIMARY KEY,
             region_name         VARCHAR,
             avg_demand_mw       DOUBLE,
@@ -52,7 +52,8 @@ def init_db() -> None:
             last_updated        TIMESTAMP,
             risk_level          VARCHAR,
             risk_rank           INTEGER,
-            risk_color          VARCHAR
+            risk_color          VARCHAR,
+            trend               VARCHAR
         )
     """)
 
@@ -95,7 +96,7 @@ def save_region_scores(df: pd.DataFrame) -> None:
             region, region_name, avg_demand_mw, avg_generation_mw,
             avg_net_balance_mw, avg_balance_ratio, max_balance_ratio,
             stress_hours, total_hours, stress_pct, rolling_avg_ratio,
-            stress_streak, last_updated, risk_level, risk_rank, risk_color
+            stress_streak, last_updated, risk_level, risk_rank, risk_color, trend
         FROM df
     """)
 
@@ -134,7 +135,7 @@ if __name__ == "__main__":
     raw = fetch_all_regions(days_back=7)
     transformed = transform(raw)
     summary = summarize_by_region(transformed)
-    scored = score(summary)
+    scored = score(summary, transformed)
 
     init_db()
     save_time_series(transformed)
