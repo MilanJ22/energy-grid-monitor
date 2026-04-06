@@ -1,4 +1,4 @@
-# ⚡ U.S. Energy Grid Risk Monitor
+# ⚡ U.S. Energy Grid Intelligence Dashboard
 
 A real-time operational intelligence tool that ingests live U.S. electricity data, runs an automated risk scoring pipeline, and surfaces grid stress signals to operators through an interactive dashboard.
 
